@@ -6,6 +6,8 @@ import Queue
 
 import os
 
+#ダミー関数、どういう意味だっけ？
+
 def dummy_face_eval(angle):
   delta_face = angle[0]
   return delta_face
