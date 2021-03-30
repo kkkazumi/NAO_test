@@ -84,7 +84,7 @@ class Neural:
 
   def predict(self,input_data):
     if(input_data.shape[1] != self.input_dim):
-      print("input correct size data")
+      print("input correct size data",input_data.shape[1],self.input_dim)
       output_data = None
     else:
       #robotalk_type,step,robotalk_length
