@@ -48,7 +48,7 @@ class Neural:
   #  history = self.model.fit(self.x_train, self.y_train, verbose=0, epochs=200, batch_size=128, validation_split=0.1)
   #  return 1 - history.history["val_accuracy"][-1]
 
-  def train(self,trial_number,x_train_data,y_train_data):
+  def train(self,x_train_data,y_train_data):
 
     self.x_train = x_train_data
     self.y_train = y_train_data
@@ -75,6 +75,8 @@ class Neural:
     self.model.compile(optimizer=optimizer,
       loss="mean_squared_error",
       metrics=["accuracy"])
+    
+    print("training data",self.x_train,self.y_train)
 
     train=self.model.fit(x=self.x_train, y=self.y_train, nb_epoch=self.epoch)
     self.model.save(self.name+"_model.h5")
@@ -87,7 +89,6 @@ class Neural:
       print("input correct size data",input_data.shape[1],self.input_dim)
       output_data = None
     else:
-      #robotalk_type,step,robotalk_length
       output_data= self.model.predict(input_data)
     return output_data
 
@@ -97,7 +98,7 @@ if __name__ == '__main__':
   x_train = np.tile(np.linspace(0,1,10),(4,1))
   y_train = np.linspace(0,0.5,10)*2+np.ones_like(np.linspace(0,1,10))*0.5
   neural = Neural(name,4,1,trial_number)
-  neural.train(trial_number,x_train.T,y_train.T)
+  neural.train(x_train.T,y_train.T)
   #neural.get_model("present")
   x_test = np.array([[1,1,1,1]])
   print("return",neural.predict(x_test))
