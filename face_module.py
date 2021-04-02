@@ -7,7 +7,6 @@ import Queue
 import os
 
 def dummy_face_eval(angle):
-  print("pls check angle",angle)
   delta_face = 3*angle[1]-angle[0]
   return delta_face
 
@@ -31,7 +30,6 @@ def get_face(q_face):
         face = 0
       else:
         angle = np.loadtxt("angle.csv",delimiter=",")
-        print("load angle",angle)
         os.remove("angle.csv")
 
         face,timestamp=dummy_face(angle,face)
