@@ -8,6 +8,10 @@ import numpy as np
 #import scipy as sp
 #from scipy.stats import pearsonr
 
+from keras.utils import plot_model
+
+import os
+
 MID_UNIT = 5
 
 class Neural:
@@ -21,11 +25,15 @@ class Neural:
 
     if(mode=="present"):
       self.model = load_model(self.name+"_model.h5")
+      #self.status = self.model.load_weights("ckpt")
     elif(mode=="new"):
-      #define NN framework
+    #  #define NN framework
       self.model = Sequential()
       self.model.add(Dense(para_unit, input_dim = self.input_dim, activation=para_act))
       self.model.add(Dense(self.output_dim, activation=para_act))
+
+    if(os.path.exists("ckpt")==True):
+      self.status = self.model.load_weights("ckpt")
 
   #def objective(self,trial):
   #  print("here")
@@ -48,7 +56,7 @@ class Neural:
   #  history = self.model.fit(self.x_train, self.y_train, verbose=0, epochs=200, batch_size=128, validation_split=0.1)
   #  return 1 - history.history["val_accuracy"][-1]
 
-  def train(self,x_train_data,y_train_data):
+  def train(self,x_train_data,y_train_data,mode,i):
 
     self.x_train = x_train_data
     self.y_train = y_train_data
@@ -70,7 +78,10 @@ class Neural:
     #  f.writelines(best_params)
 
     #define NN framework
-    self.get_model("new",para_unit=mid_units,para_act=activation)
+
+    self.get_model(mode,para_unit=mid_units,para_act=activation)
+    print("before compile")
+    plot_model(self.model, to_file='model_'+str(i)+'.png')
 
     self.model.compile(optimizer=optimizer,
       loss="mean_squared_error",
@@ -80,6 +91,7 @@ class Neural:
 
     train=self.model.fit(x=self.x_train, y=self.y_train, nb_epoch=self.epoch)
     self.model.save(self.name+"_model.h5")
+    self.model.save_weights("ckpt")
 
     lossname = self.name+ "_loss.csv"
     np.savetxt(lossname,train.history['loss'])
@@ -89,6 +101,7 @@ class Neural:
       print("input correct size data",input_data.shape[1],self.input_dim)
       output_data = None
     else:
+      #plot_model(self.model, to_file='model.png',show_shapes=True)
       output_data= self.model.predict(input_data)
     return output_data
 
@@ -98,7 +111,7 @@ if __name__ == '__main__':
   x_train = np.tile(np.linspace(0,1,10),(4,1))
   y_train = np.linspace(0,0.5,10)*2+np.ones_like(np.linspace(0,1,10))*0.5
   neural = Neural(name,4,1,trial_number)
-  neural.train(x_train.T,y_train.T)
-  #neural.get_model("present")
+  #neural.train(x_train.T,y_train.T,"new",0)
+  neural.get_model("new")
   x_test = np.array([[1,1,1,1]])
   print("return",neural.predict(x_test))
