@@ -4,12 +4,15 @@ import datetime
 import numpy as np
 import threading
 
+import tensorflow as tf
+
 import Queue
 
 from face_module import get_face
 from neural_net import *
 
 import itertools
+import fasteners
 
 epsilon = 0.1
 mu = 0.9
@@ -29,8 +32,12 @@ LEARN_NUM = 2
 
 ACT_GEN_WIDTH = 4
 
-LOOP = 2
+LOOP = 4
 INPUT_DIM = ANGLE_DIM * LOOP
+OUTPUT_DIM = FACE_DIM
+
+#time of start learning
+ML_TIME = 5
 
 def conv_angle(key_str,angle):
     key_list = ["HeadYaw","HeadPitch","LShoulderRoll", "RShoulderRoll","LShoulderPitch", "RShoulderPitch","LElbowRoll", "RElbowRoll","LElbowYaw", "RElbowYaw"]
@@ -50,17 +57,22 @@ def move(proxy,angle,t):
     #motion_proc.changeAngles(["LElbowYaw", "RElbowYaw"], [conv_angle("LElbowYaw",angle[0,0]), conv_angle("RElbowYaw",angle[0,1])],speed)
 
 class Motion:
+  _lock = threading.Lock()
+  #_lock = fasteners.InterProcessLock('/var/tmp/lockfile')
   def __init__(self,robot_name,robot,robot_move_func):
     self.robot= robot
     self.robot_move_func= robot_move_func
 
-    self.neural = Neural(robot_name,ANGLE_DIM*2,FACE_DIM,LEARN_NUM)
+    self.neural = Neural(robot_name,INPUT_DIM,OUTPUT_DIM,LEARN_NUM)
+    self._neural = Neural(robot_name+"o",INPUT_DIM,OUTPUT_DIM,LEARN_NUM)
     self.neural.get_model("new")
+    self._neural.get_model("new")
 
     self.face_history = np.zeros((100,FACE_DIM))
     self.angle_history = np.zeros((100,ANGLE_DIM))
 
     self.count = 0
+    self.graph = tf.get_default_graph()
 
   def run(self):
 
@@ -76,41 +88,69 @@ class Motion:
     #th_learning.join()
 
 
-
   def get_motion_para(self,present_angle,i):
     t= np.random.rand()
     t = 60.0/float(BPM)
 
-    if(i==0):
+    if(i<ML_TIME):
       angle= np.random.rand(ANGLE_DIM,1)
     else:
-      x = int(ACT_GEN_WIDTH)
-      l=np.linspace(0,1,x)
+      split_size = int(ACT_GEN_WIDTH)
+      l=np.linspace(0,1,split_size)
 
-      candidate_array = np.zeros((x**ANGLE_DIM,ANGLE_DIM*2))
-      candidate_score = np.zeros(x**ANGLE_DIM)
+      #candidate_array = np.zeros((x**ANGLE_DIM,ANGLE_DIM*2))
+      candidate_array = np.zeros((split_size**ANGLE_DIM,INPUT_DIM))
+      candidate_score = np.zeros(split_size**ANGLE_DIM)
 
       index = 0
 
-      for v in itertools.product(l,repeat=ANGLE_DIM):
-        candidate_array[index,:] = np.hstack((present_angle,np.array(v)))
-        reshape=np.reshape(candidate_array[index,:].T,[-1,INPUT_DIM])
+      #self.neural.get_model("present")
+      with self.graph.as_default():
+        for v in itertools.product(l,repeat=ANGLE_DIM):
+          #candidate_array[index,:] = np.hstack((present_angle,np.array(v)))
+          candidate_array[index,:] = np.hstack((np.hstack((self.angle_history[-LOOP+1:,:])),np.array(v)))
+          reshape=np.reshape(candidate_array[index,:],[-1,INPUT_DIM])
 
-        candidate_score[index] = self.neural.predict(reshape)
-        index+=1
+          if(Motion._lock.acquire()==True):
+            candidate_score[index] = self.neural.predict(reshape)
+            Motion._lock.release()
+          else:
+            candidate_score[index] = 0
+          index+=1
 
-      angle = candidate_array[np.argmax(candidate_score),-ANGLE_DIM:]
+        angle = candidate_array[np.argmax(candidate_score),-ANGLE_DIM:]
+        print("angle",angle)
 
     return t,np.reshape(angle,(-1,ANGLE_DIM))
 
   #def ml_loop(self,present_angle,angle,face):
   def ml_loop(self):
-    while(True):
-      if(self.count%10==0):
-        input_array = self.angle_history[-LOOP:,:]
-        print("input_array",input_array,np.hstack((input_array)))
-        output_array = self.face_history[-LOOP:,:]
-        #self.neural.train(np.reshape(np.hstack((present_angle,angle)),(-1,ANGLE_DIM*2)),np.reshape(face,(-1,FACE_DIM)))  
+    mark=0
+
+    with self.graph.as_default():
+
+      if(self.count<ML_TIME):
+        mode="new"
+      else:
+        mode="present"
+
+      while(True):
+        if(self.count%int(ML_TIME)==0):
+          if(mark==0):
+            input_array = np.reshape(np.hstack((self.angle_history[-LOOP:,:])),(-1,INPUT_DIM))
+            output_array = np.reshape(np.hstack((self.face_history[-1,:])),(-1,OUTPUT_DIM))
+            print("before learning",mode,mark)
+            #self._neural.train(np.reshape(input_array,(-1,INPUT_DIM)),np.reshape(output_array,(-1,OUTPUT_DIM)),mode,self.count)  
+            Motion._lock.acquire()
+            self.neural.model.compile(optimizer="adam",
+              loss="mean_squared_error",
+              metrics=["accuracy"])
+    
+            self.neural.model.fit(x=input_array, y=output_array, nb_epoch=2)
+            Motion._lock.release()
+            mark=1
+        else:
+          mark = 0
 
         #self.neural.train(np.reshape(np.hstack((present_angle,angle)),(-1,ANGLE_DIM*2)),np.reshape(face,(-1,FACE_DIM)))  
 
@@ -121,7 +161,7 @@ class Motion:
 
     for i in range(TRIAL_NUM):
       self.count = i
-      t,angle = self.get_motion_para(present_angle,0)
+      t,angle = self.get_motion_para(present_angle,i)
       #t,angle = get_angle(present_angle,neural,self.count)
 
       self.robot_move_func(self.robot,angle,t)
