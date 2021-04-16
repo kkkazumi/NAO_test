@@ -6,6 +6,9 @@
   - check port number by pushing button of network
   - change the port number of test.py
 
+  - cd ~/prog/emopy_test/
+  - run `python3 fermodel_example_webcam.py`
+
 - at first, `source ./.bashrc`
 - then, `python2.7 test.py`
 
