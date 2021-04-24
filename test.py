@@ -129,41 +129,20 @@ class Motion:
       split_size = int(ACT_GEN_WIDTH)
       N=ANGLE_DIM*TIME_SIG#dim of estimation
       candidate_score = np.zeros(split_size**N)
-      #l=np.linspace(0,1,split_size)
 
-      #candidate_array = np.zeros((split_size**N,INPUT_DIM))
-
-      #index = 0
-
-      #self.neural.get_model("present")
-      #tic = time.clock()
       with self.graph.as_default():
 
-        #for v in itertools.product(l,repeat=N):
-          #candidate_array[index,:] = np.hstack((present_angle,np.array(v)))
-        #  candidate_array[index,:] = np.hstack((np.hstack((self.angle_history[-TIME_SIG:,:])),np.array(v)))
-        #  candidate_array[index,:] = np.hstack((np.hstack((self.angle_history[-TIME_SIG:,:])),np.array(v)))
-
-        #  #reshape=np.reshape(candidate_array[index,:],[-1,INPUT_DIM])
-
-        #  #if(Motion._lock.acquire()==True):
-        #  #  candidate_score[index] = self.neural.predict(reshape)
-        #  #  Motion._lock.release()
-        #  #
-        #  #else:
-        #  #  candidate_score[index] = 0
-        #  index+=1
-
-        #print("candidate array out")
         candidate_array = self.set_candidate_array(1)
         reshape=np.reshape(candidate_array,[-1,INPUT_DIM])
+        tic = time.clock()
+        candidate_score = self.neural.predict(reshape)
+        toc = time.clock()
+        print("time {0:0.4f} seconds".format(toc-tic))
 
-        #          toc = time.clock()
-        #print("Downloaded the tutorial in {0} - {1:0.4f} seconds".format(toc,tic))
 
         ##tmp#TODO
-        #angle = candidate_array[np.argmax(candidate_score),-ANGLE_DIM:]
-        angle= np.random.rand(ANGLE_DIM,TIME_SIG)
+        angle = candidate_array[np.argmax(candidate_score),-ANGLE_DIM*TIME_SIG:]
+        #angle= np.random.rand(ANGLE_DIM,TIME_SIG)
 
       print("predicted angle",angle)
     return t,np.reshape(angle,(-1,ANGLE_DIM))
@@ -225,11 +204,11 @@ class Motion:
     face_file = "/home/kazumi/prog/emopy_test/test_face.csv"
 
     candidate_array = self.set_candidate_array(0)
+    self.count = 0
+    t,angle = self.get_motion_para(0)
 
     for i in range(MEASURES):
       self.count = i
-      t,angle = self.get_motion_para(i)
-      #t,angle = get_angle(present_angle,neural,self.count)
 
       for t in range(TIME_SIG):
         self.robot_move_func(self.robot,np.reshape(angle[t,:],(-1,ANGLE_DIM)),t)
@@ -259,6 +238,9 @@ class Motion:
         #present_angle = np.reshape(angle,(ANGLE_DIM))
 
         time.sleep(1.0)
+
+      t,angle = self.get_motion_para(i+1)
+      #t,angle = get_angle(present_angle,neural,self.count)
 
 def main():
   
