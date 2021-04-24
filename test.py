@@ -14,6 +14,7 @@ from neural_net import *
 import itertools
 import fasteners
 
+
 epsilon = 0.1
 mu = 0.9
 epoch = 10
@@ -48,7 +49,7 @@ def conv_angle(key_str,angle):
     return angle*a + b
 
 
-def move(proxy,angle,t):
+def nao_move(proxy,angle,t):
     speed = 1.0
     print("move")
     #motion_proc.changeAngles(["HeadYaw", "HeadPitch"], [conv_angle("HeadYaw",angle[0,0]), conv_angle("HeadPitch",angle[0,1])], speed)
@@ -135,19 +136,18 @@ class Motion:
         candidate_array = self.set_candidate_array(1)
         reshape=np.reshape(candidate_array,[-1,INPUT_DIM])
         tic = time.clock()
+        Motion._lock.acquire()
         candidate_score = self.neural.predict(reshape)
+        Motion._lock.release()
         toc = time.clock()
         print("time {0:0.4f} seconds".format(toc-tic))
 
-
-        ##tmp#TODO
         angle = candidate_array[np.argmax(candidate_score),-ANGLE_DIM*TIME_SIG:]
         #angle= np.random.rand(ANGLE_DIM,TIME_SIG)
 
       print("predicted angle",angle)
     return t,np.reshape(angle,(-1,ANGLE_DIM))
 
-  #def ml_loop(self,present_angle,angle,face):
   def ml_loop(self):
     mark=0
     with self.graph.as_default():
@@ -182,12 +182,10 @@ class Motion:
 
     if(t==0):
 
-      #candidate_score = np.zeros(split_size**N)
       index = 0
 
       for v in itertools.product(l,repeat=N):
         candidate_array[index,:] = np.hstack((np.zeros(N),np.array(v)))
-        #candidate_array[index,:] = np.hstack((np.hstack((self.angle_history[-TIME_SIG:,:])),np.array(v)))
         index+=1
 
       self.index = index
@@ -197,56 +195,63 @@ class Motion:
 
     return candidate_array
 
+  def robot_move(self,angle):
+    face_file = "/home/kazumi/prog/emopy_test/test_face.csv"
+    for t in range(TIME_SIG):
+      self.robot_move_func(self.robot,np.reshape(angle[t,:],(-1,ANGLE_DIM)),t)
+
+      #face2##
+      if(os.path.exists(face_file)==True):
+        if(os.stat(face_file).st_size!=0):
+          face = np.loadtxt(face_file,delimiter=",")
+          #print("face",face[-1,:3],face.shape)
+          #if(face.shape>500):
+          #  os.remove(face_file)
+          #  print("delete")
+
+          self.face_history[:-1,:] = self.face_history[1:,:]
+          self.angle_history[:-1,:] = self.angle_history[1:,:]
+
+          self.face_history[-1,:] = face[-1,2]
+          self.angle_history[-1,:] = angle[t,:]
+
+      else:
+        print("no face")
+
+        #learning(neural,present_angle,angle[0,:],face)
+        #with open("learning.txt",'a') as f:
+        #  f.write(str(present_angle)+str(angle[0,:])+","+str(face)+"\n")
+
+      #present_angle = np.reshape(angle,(ANGLE_DIM))
+
+      time.sleep(1.0)
+
+
 
   def motion_loop(self):
     present_angle = np.zeros(ANGLE_DIM)
     self.robot_move_func(self.robot,np.reshape(present_angle,(-1,ANGLE_DIM)),1)
-    face_file = "/home/kazumi/prog/emopy_test/test_face.csv"
 
     candidate_array = self.set_candidate_array(0)
     self.count = 0
     t,angle = self.get_motion_para(0)
+    print("angle",angle)
 
     for i in range(MEASURES):
       self.count = i
+      print("count",self.count)
 
-      for t in range(TIME_SIG):
-        self.robot_move_func(self.robot,np.reshape(angle[t,:],(-1,ANGLE_DIM)),t)
-
-        #face2##
-        if(os.path.exists(face_file)==True):
-          if(os.stat(face_file).st_size!=0):
-            face = np.loadtxt(face_file,delimiter=",")
-            #print("face",face[-1,:3],face.shape)
-            #if(face.shape>500):
-            #  os.remove(face_file)
-            #  print("delete")
-
-            self.face_history[:-1,:] = self.face_history[1:,:]
-            self.angle_history[:-1,:] = self.angle_history[1:,:]
-
-            self.face_history[-1,:] = face[-1,2]
-            self.angle_history[-1,:] = angle[t,:]
-
-        else:
-          print("no face")
-
-          #learning(neural,present_angle,angle[0,:],face)
-          #with open("learning.txt",'a') as f:
-          #  f.write(str(present_angle)+str(angle[0,:])+","+str(face)+"\n")
-
-        #present_angle = np.reshape(angle,(ANGLE_DIM))
-
-        time.sleep(1.0)
+      mov_thr = threading.Thread(target=self.robot_move,args=(angle,))
+      mov_thr.start()
 
       t,angle = self.get_motion_para(i+1)
-      #t,angle = get_angle(present_angle,neural,self.count)
+      mov_thr.join()
 
 def main():
   
   robot_name = "NAO"
   robot = ALProxy("ALMotion", HOST, PORT)
-  robot_move_func = move
+  robot_move_func = nao_move
   motion_main=Motion(robot_name,robot,robot_move_func)
   motion_main.run()
 
