@@ -19,12 +19,12 @@ mu = 0.9
 epoch = 10
 
 TIME_SIG = 4#four-four
-MEASURES = 4
+MEASURES = 8
 TRIAL_NUM = MEASURES
 BPM = 60
 
 HOST = "127.0.0.1"
-PORT= 36297
+PORT= 40835
 
 ANGLE_DIM= 2
 FACE_DIM= 1
@@ -41,7 +41,7 @@ ML_TIME = LOOP*2
 
 def conv_angle(key_str,angle):
     key_list = ["HeadYaw","HeadPitch","LShoulderRoll", "RShoulderRoll","LShoulderPitch", "RShoulderPitch","LElbowRoll", "RElbowRoll","LElbowYaw", "RElbowYaw"]
-    angle_array = 0.5*np.array([[-2.0,2.0],[-0.6,0.5],[-0.3,1.3],[-1.3,0.3],[-2.0,2.0],[-2.0,2.0],[-1.5,0],[0,1.5],[-2.0,2.0],[-2.0,2.0]])
+    angle_array = np.array([[-2.0,2.0],[-0.6,0.5],[-0.3,1.3],[-1.3,0.3],[-2.0,2.0],[-2.0,2.0],[-1.5,0],[0,1.5],[-2.0,2.0],[-2.0,2.0]])
     index=key_list.index(key_str)
     a = abs(angle_array[index,0])+abs(angle_array[index,1])
     b = angle_array[index,0]
@@ -74,6 +74,8 @@ class Motion:
 
     self.count = 0
     self.graph = tf.get_default_graph()
+
+    self.index = 0
 
   def run(self):
 
@@ -114,42 +116,56 @@ class Motion:
           mark = 0
         #self.neural.train(np.reshape(np.hstack((present_angle,angle)),(-1,ANGLE_DIM*2)),np.reshape(face,(-1,FACE_DIM)))  
 
-  def get_motion_para(self,present_angle,i):
+  def get_motion_para(self,i):
     t= np.random.rand()
     t = 60.0/float(BPM)
     print("t",t)
 
-    if(i<ML_TIME):
+    if(i<TIME_SIG):
       angle= np.random.rand(ANGLE_DIM,TIME_SIG)
+      print("random angle",angle)
     else:
+
       split_size = int(ACT_GEN_WIDTH)
       N=ANGLE_DIM*TIME_SIG#dim of estimation
-      l=np.linspace(0,1,split_size)
-
-      #candidate_array = np.zeros((x**ANGLE_DIM,ANGLE_DIM*2))
-      candidate_array = np.zeros((split_size**N,INPUT_DIM))
       candidate_score = np.zeros(split_size**N)
+      #l=np.linspace(0,1,split_size)
 
-      index = 0
+      #candidate_array = np.zeros((split_size**N,INPUT_DIM))
+
+      #index = 0
 
       #self.neural.get_model("present")
+      #tic = time.clock()
       with self.graph.as_default():
-        for v in itertools.product(l,repeat=N):
+
+        #for v in itertools.product(l,repeat=N):
           #candidate_array[index,:] = np.hstack((present_angle,np.array(v)))
-          candidate_array[index,:] = np.hstack((np.hstack((self.angle_history[-TIME_SIG:,:])),np.array(v)))
-          candidate_array[index,:] = np.hstack((np.hstack((self.angle_history[-TIME_SIG:,:])),np.array(v)))
-          reshape=np.reshape(candidate_array[index,:],[-1,INPUT_DIM])
+        #  candidate_array[index,:] = np.hstack((np.hstack((self.angle_history[-TIME_SIG:,:])),np.array(v)))
+        #  candidate_array[index,:] = np.hstack((np.hstack((self.angle_history[-TIME_SIG:,:])),np.array(v)))
 
-          if(Motion._lock.acquire()==True):
-            candidate_score[index] = self.neural.predict(reshape)
-            Motion._lock.release()
-          else:
-            candidate_score[index] = 0
-          index+=1
+        #  #reshape=np.reshape(candidate_array[index,:],[-1,INPUT_DIM])
 
-        angle = candidate_array[np.argmax(candidate_score),-ANGLE_DIM:]
+        #  #if(Motion._lock.acquire()==True):
+        #  #  candidate_score[index] = self.neural.predict(reshape)
+        #  #  Motion._lock.release()
+        #  #
+        #  #else:
+        #  #  candidate_score[index] = 0
+        #  index+=1
 
-    print("predicted angle",angle)
+        #print("candidate array out")
+        candidate_array = self.set_candidate_array(1)
+        reshape=np.reshape(candidate_array,[-1,INPUT_DIM])
+
+        #          toc = time.clock()
+        #print("Downloaded the tutorial in {0} - {1:0.4f} seconds".format(toc,tic))
+
+        ##tmp#TODO
+        #angle = candidate_array[np.argmax(candidate_score),-ANGLE_DIM:]
+        angle= np.random.rand(ANGLE_DIM,TIME_SIG)
+
+      print("predicted angle",angle)
     return t,np.reshape(angle,(-1,ANGLE_DIM))
 
   #def ml_loop(self,present_angle,angle,face):
@@ -178,16 +194,42 @@ class Motion:
           mark = 0
         #self.neural.train(np.reshape(np.hstack((present_angle,angle)),(-1,ANGLE_DIM*2)),np.reshape(face,(-1,FACE_DIM)))  
 
+  def set_candidate_array(self,t):
+
+    split_size = int(ACT_GEN_WIDTH)
+    N=ANGLE_DIM*TIME_SIG#dim of estimation
+    l=np.linspace(0,1,split_size)
+    candidate_array = np.zeros((split_size**N,INPUT_DIM))
+
+    if(t==0):
+
+      #candidate_score = np.zeros(split_size**N)
+      index = 0
+
+      for v in itertools.product(l,repeat=N):
+        candidate_array[index,:] = np.hstack((np.zeros(N),np.array(v)))
+        #candidate_array[index,:] = np.hstack((np.hstack((self.angle_history[-TIME_SIG:,:])),np.array(v)))
+        index+=1
+
+      self.index = index
+
+    else:
+      candidate_array[:,:N] = np.tile(np.hstack((self.angle_history[-TIME_SIG:,:])),(self.index,1))
+
+    return candidate_array
+
+
   def motion_loop(self):
     present_angle = np.zeros(ANGLE_DIM)
     self.robot_move_func(self.robot,np.reshape(present_angle,(-1,ANGLE_DIM)),1)
     face_file = "/home/kazumi/prog/emopy_test/test_face.csv"
 
+    candidate_array = self.set_candidate_array(0)
+
     for i in range(MEASURES):
       self.count = i
-      t,angle = self.get_motion_para(present_angle,i)
+      t,angle = self.get_motion_para(i)
       #t,angle = get_angle(present_angle,neural,self.count)
-      print("angle shape",angle.shape)
 
       for t in range(TIME_SIG):
         self.robot_move_func(self.robot,np.reshape(angle[t,:],(-1,ANGLE_DIM)),t)
