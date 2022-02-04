@@ -14,11 +14,12 @@ def conv_angle(key_str,angle):
     b = angle_array[index,0]
     return angle*a + b
 
-def nao_move(proxy,angle,t):
+def nao_move(proxy,angle):
     speed = 1.0
-    print("move",angle,t)
     #motion_proc.changeAngles(["HeadYaw", "HeadPitch"], [conv_angle("HeadYaw",angle[0,0]), conv_angle("HeadPitch",angle[0,1])], speed)
-    proxy.changeAngles(["LShoulderRoll", "RShoulderRoll"], [conv_angle("LShoulderRoll",angle[0,0]), conv_angle("RShoulderRoll",angle[0,1])],speed )
+    if(angle==1):
+      angle=45
+      proxy.changeAngles(["LShoulderRoll", "RShoulderRoll"], [conv_angle("LShoulderRoll",angle[0,0]), conv_angle("RShoulderRoll",angle[0,1])],speed )
     #motion_proc.changeAngles(["LShoulderPitch", "RShoulderPitch"], [conv_angle("LShoulderPitch",angle[0,0]), conv_angle("RShoulderPitch",angle[0,1])],speed)
     #motion_proc.changeAngles(["LElbowRoll", "RElbowRoll"], [conv_angle("LElbowRoll",angle[0,0]), conv_angle("RElbowRoll",angle[0,1])],speed)
     #motion_proc.changeAngles(["LElbowYaw", "RElbowYaw"], [conv_angle("LElbowYaw",angle[0,0]), conv_angle("RElbowYaw",angle[0,1])],speed)
@@ -27,5 +28,6 @@ def nao_data():
   robot_name = "NAO"
   robot = ALProxy("ALMotion", HOST, PORT)
   robot_move_func = nao_move
-  return robot_name,robot,robot_move_func
+  N=10
+  return robot_name,robot,robot_move_func,N
 
