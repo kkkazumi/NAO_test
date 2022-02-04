@@ -21,9 +21,7 @@ mu = 0.9
 epoch = 10
 
 TIME_SIG = 4#four-four
-MEASURES = 8
-TRIAL_NUM = MEASURES
-BPM = 60
+BARS = 8
 
 HOST = "127.0.0.1"
 PORT= 41849
@@ -44,35 +42,25 @@ ML_TIME = LOOP*2
 class Motion:
   _lock = threading.Lock()
   #_lock = fasteners.InterProcessLock('/var/tmp/lockfile')
-  def __init__(self,robot_name,robot,robot_move_func):
+  def __init__(self,robot_name,robot,robot_move_func,face_file,N):
     self.robot= robot
     self.robot_move_func= robot_move_func
+    self.motion_cand = np.zeros(N)
+
+    self.better_motion_file = "better_motion.csv"
 
     self.neural = Neural(robot_name,INPUT_DIM,OUTPUT_DIM,LEARN_NUM)
     self._neural = Neural(robot_name+"o",INPUT_DIM,OUTPUT_DIM,LEARN_NUM)
     self.neural.get_model("new")
     self._neural.get_model("new")
+    self.graph = tf.get_default_graph()
 
     self.face_history = np.zeros((100,FACE_DIM))
     self.angle_history = np.zeros((100,ANGLE_DIM))
 
     self.count = 0
-    self.graph = tf.get_default_graph()
 
-    self.index = 0
-
-  def run(self):
-
-    th_robot = threading.Thread(target=self.motion_loop,args=())
-    th_learning = threading.Thread(target=self.ml_loop,args=())
-
-    th_learning.setDaemon(True)
-
-    th_robot.start()
-    th_learning.start()
-
-    th_robot.join()
-    #th_learning.join()
+    self.face_file = face_file
 
   def ml_loop(self):
     mark=0
@@ -98,53 +86,31 @@ class Motion:
         else:
           mark = 0
 
+  def update_better_motion(self):
+    #candidate_score = np.zeros(split_size**N)
+    with self.graph.as_default():
+      #candidate_array = self.set_candidate_array(1)
+      #self.candidate_array
+      reshape=np.reshape(self.candidate_array,[-1,INPUT_DIM])
+      candidate_score = self.neural.predict(reshape)
+      better_motion = candidate_array[np.argmax(candidate_score),-ANGLE_DIM*TIME_SIG:]
+
+      np.savetxt(better_motion,self.better_motion_file,delimiter=",")
+
   def get_motion(self):
-      candidate_score = np.zeros(split_size**N)
-
-      with self.graph.as_default():
-        candidate_array = self.set_candidate_array(1)
-        reshape=np.reshape(candidate_array,[-1,INPUT_DIM])
-        candidate_score = self.neural.predict(reshape)
-
-        better_motion = candidate_array[np.argmax(candidate_score),-ANGLE_DIM*TIME_SIG:]
-
+    candidate_score = self.neural.predict(reshape)
+    better_motion = candidate_array[np.argmax(candidate_score),-ANGLE_DIM*TIME_SIG:]
     return better_motion
 
-  def set_candidate_array(self,t):
-
-    split_size = int(ACT_GEN_WIDTH)
-    N=ANGLE_DIM*TIME_SIG#dim of estimation
-    l=np.linspace(0,1,split_size)
-    candidate_array = np.zeros((split_size**N,INPUT_DIM))
-
-    if(t==0):
-
-      index = 0
-
-      for v in itertools.product(l,repeat=N):
-        candidate_array[index,:] = np.hstack((np.zeros(N),np.array(v)))
-        index+=1
-
-      self.index = index
-
-    else:
-      candidate_array[:,:N] = np.tile(np.hstack((self.angle_history[-TIME_SIG:,:])),(self.index,1))
-
-    return candidate_array
-
-  def robot_move(self,angle):
-    face_file = "/home/kazumi/prog/emopy_test/test_face.csv"
+  def robot_move(self,motion_order):
     for t in range(TIME_SIG):
-      self.robot_move_func(self.robot,np.reshape(angle[t,:],(-1,ANGLE_DIM)),t)
+      self.robot_move_func(self.robot,motion_order[t])
+      #self.robot_move_func(self.robot,np.reshape(angle[t,:],(-1,ANGLE_DIM)),t)
 
-      #face2##
-      if(os.path.exists(face_file)==True):
-        if(os.stat(face_file).st_size!=0):
-          face = np.loadtxt(face_file,delimiter=",")
-          #print("face",face[-1,:3],face.shape)
-          #if(face.shape>500):
-          #  os.remove(face_file)
-          #  print("delete")
+      #checking face here
+      if(os.path.exists(self.face_file)==True):
+        if(os.stat(self.face_file).st_size!=0):
+          face = np.loadtxt(self.face_file,delimiter=",")
 
           self.face_history[:-1,:] = self.face_history[1:,:]
           self.angle_history[:-1,:] = self.angle_history[1:,:]
@@ -155,41 +121,39 @@ class Motion:
       else:
         print("no face")
 
-        #learning(neural,present_angle,angle[0,:],face)
-        #with open("learning.txt",'a') as f:
-        #  f.write(str(present_angle)+str(angle[0,:])+","+str(face)+"\n")
-
-      #present_angle = np.reshape(angle,(ANGLE_DIM))
-
-      time.sleep(1.0)
-
-
+      #time.sleep(1.0)
 
   def motion_loop(self):
-    present_angle = np.zeros(ANGLE_DIM)
-    self.robot_move_func(self.robot,np.reshape(present_angle,(-1,ANGLE_DIM)),1)
-
-    candidate_array = self.set_candidate_array(0)
     self.count = 0
-    t,angle = self.get_motion_para(0)
-    print("angle",angle)
+    next_motion = self.get_motion()
 
-    for i in range(MEASURES):
+    for i in range(BARS):
       self.count = i
-      print("count",self.count)
 
-      mov_thr = threading.Thread(target=self.robot_move,args=(angle,))
+      mov_thr = threading.Thread(target=self.robot_move,args=(next_motion,))
       mov_thr.start()
 
-      t,angle = self.get_motion_para(i+1)
+      next_motion = self.get_motion()
       mov_thr.join()
 
+  def run(self):
+
+    th_robot = threading.Thread(target=self.motion_loop,args=())
+    th_learning = threading.Thread(target=self.ml_loop,args=())
+
+    th_learning.setDaemon(True)
+
+    th_robot.start()
+    th_learning.start()
+
+    th_robot.join()
+    #th_learning.join()
+
 def main():
-  robot_name,robot,robot_move_func=nao_motion.nao_data()
-  #robot_name = "NAO"
-  #robot = ALProxy("ALMotion", HOST, PORT)
-  #robot_move_func = nao_move
-  motion_main=Motion(robot_name,robot,robot_move_func)
+  robot_name,robot,robot_move_func,N=nao_motion.nao_data()
+  face_file = "/home/kazumi/prog/emopy_test/test_face.csv"
+
+  motion_main=Motion(robot_name,robot,robot_move_func,face_file,N)
   motion_main.run()
 
 if __name__ == '__main__':
