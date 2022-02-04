@@ -74,7 +74,6 @@ class Motion:
     th_robot.join()
     #th_learning.join()
 
-  #def ml_loop(self,present_angle,angle,face):
   def ml_loop(self):
     mark=0
     with self.graph.as_default():
@@ -98,63 +97,18 @@ class Motion:
             mark=1
         else:
           mark = 0
-        #self.neural.train(np.reshape(np.hstack((present_angle,angle)),(-1,ANGLE_DIM*2)),np.reshape(face,(-1,FACE_DIM)))  
 
-  def get_motion_para(self,i):
-    t= np.random.rand()
-    t = 60.0/float(BPM)
-    print("t",t)
-
-    if(i<TIME_SIG):
-      angle= np.random.rand(ANGLE_DIM,TIME_SIG)
-      print("random angle",angle)
-    else:
-
-      split_size = int(ACT_GEN_WIDTH)
-      N=ANGLE_DIM*TIME_SIG#dim of estimation
+  def get_motion(self):
       candidate_score = np.zeros(split_size**N)
 
       with self.graph.as_default():
-
         candidate_array = self.set_candidate_array(1)
         reshape=np.reshape(candidate_array,[-1,INPUT_DIM])
-        tic = time.clock()
-        Motion._lock.acquire()
         candidate_score = self.neural.predict(reshape)
-        Motion._lock.release()
-        toc = time.clock()
-        print("time {0:0.4f} seconds".format(toc-tic))
 
-        angle = candidate_array[np.argmax(candidate_score),-ANGLE_DIM*TIME_SIG:]
-        #angle= np.random.rand(ANGLE_DIM,TIME_SIG)
+        better_motion = candidate_array[np.argmax(candidate_score),-ANGLE_DIM*TIME_SIG:]
 
-      print("predicted angle",angle)
-    return t,np.reshape(angle,(-1,ANGLE_DIM))
-
-  def ml_loop(self):
-    mark=0
-    with self.graph.as_default():
-      if(self.count<ML_TIME):
-        mode="new"
-      else:
-        mode="present"
-      while(True):
-        if(self.count%int(ML_TIME)==0):
-          if(mark==0):
-            input_array = np.reshape(np.hstack((self.angle_history[-LOOP:,:])),(-1,INPUT_DIM))
-            output_array = np.reshape(np.hstack((self.face_history[-1,:])),(-1,OUTPUT_DIM))
-            print("before learning",mode,mark)
-            #self._neural.train(np.reshape(input_array,(-1,INPUT_DIM)),np.reshape(output_array,(-1,OUTPUT_DIM)),mode,self.count)  
-            Motion._lock.acquire()
-            self.neural.model.compile(optimizer="adam",
-              loss="mean_squared_error",
-              metrics=["accuracy"])
-            self.neural.model.fit(x=input_array, y=output_array, nb_epoch=2)
-            Motion._lock.release()
-            mark=1
-        else:
-          mark = 0
-        #self.neural.train(np.reshape(np.hstack((present_angle,angle)),(-1,ANGLE_DIM*2)),np.reshape(face,(-1,FACE_DIM)))  
+    return better_motion
 
   def set_candidate_array(self,t):
 
