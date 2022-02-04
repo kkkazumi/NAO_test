@@ -1,4 +1,6 @@
-from naoqi import *
+#from naoqi import *
+import nao_motion
+
 import time 
 import datetime
 import numpy as np
@@ -6,14 +8,13 @@ import threading
 
 import tensorflow as tf
 
-import Queue
+#import Queue
 
 from face_module import get_face
 from neural_net import *
 
 import itertools
 import fasteners
-
 
 epsilon = 0.1
 mu = 0.9
@@ -25,7 +26,7 @@ TRIAL_NUM = MEASURES
 BPM = 60
 
 HOST = "127.0.0.1"
-PORT= 40835
+PORT= 41849
 
 ANGLE_DIM= 2
 FACE_DIM= 1
@@ -39,24 +40,6 @@ OUTPUT_DIM = FACE_DIM
 
 #time of start learning
 ML_TIME = LOOP*2
-
-def conv_angle(key_str,angle):
-    key_list = ["HeadYaw","HeadPitch","LShoulderRoll", "RShoulderRoll","LShoulderPitch", "RShoulderPitch","LElbowRoll", "RElbowRoll","LElbowYaw", "RElbowYaw"]
-    angle_array = np.array([[-2.0,2.0],[-0.6,0.5],[-0.3,1.3],[-1.3,0.3],[-2.0,2.0],[-2.0,2.0],[-1.5,0],[0,1.5],[-2.0,2.0],[-2.0,2.0]])
-    index=key_list.index(key_str)
-    a = abs(angle_array[index,0])+abs(angle_array[index,1])
-    b = angle_array[index,0]
-    return angle*a + b
-
-
-def nao_move(proxy,angle,t):
-    speed = 1.0
-    print("move")
-    #motion_proc.changeAngles(["HeadYaw", "HeadPitch"], [conv_angle("HeadYaw",angle[0,0]), conv_angle("HeadPitch",angle[0,1])], speed)
-    proxy.changeAngles(["LShoulderRoll", "RShoulderRoll"], [conv_angle("LShoulderRoll",angle[0,0]), conv_angle("RShoulderRoll",angle[0,1])],speed )
-    #motion_proc.changeAngles(["LShoulderPitch", "RShoulderPitch"], [conv_angle("LShoulderPitch",angle[0,0]), conv_angle("RShoulderPitch",angle[0,1])],speed)
-    #motion_proc.changeAngles(["LElbowRoll", "RElbowRoll"], [conv_angle("LElbowRoll",angle[0,0]), conv_angle("RElbowRoll",angle[0,1])],speed)
-    #motion_proc.changeAngles(["LElbowYaw", "RElbowYaw"], [conv_angle("LElbowYaw",angle[0,0]), conv_angle("RElbowYaw",angle[0,1])],speed)
 
 class Motion:
   _lock = threading.Lock()
@@ -248,10 +231,10 @@ class Motion:
       mov_thr.join()
 
 def main():
-  
-  robot_name = "NAO"
-  robot = ALProxy("ALMotion", HOST, PORT)
-  robot_move_func = nao_move
+  robot_name,robot,robot_move_func=nao_motion.nao_data()
+  #robot_name = "NAO"
+  #robot = ALProxy("ALMotion", HOST, PORT)
+  #robot_move_func = nao_move
   motion_main=Motion(robot_name,robot,robot_move_func)
   motion_main.run()
 
